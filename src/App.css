@@ -161,6 +161,33 @@ h1 {
   user-select: none;
 }
 
+.download-button {
+  padding: 0.5em 1em;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: rgba(100, 108, 255, 0.5);
+  color: white;
+  font-size: 0.9em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+}
+
+.download-button:hover {
+  background-color: rgba(100, 108, 255, 0.7);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.download-button:active {
+  background-color: rgba(100, 108, 255, 0.9);
+}
+
+.download-button:focus {
+  outline: 2px solid #646cff;
+  outline-offset: 2px;
+}
+
 .grid-container {
   display: flex;
   justify-content: center;
@@ -304,6 +331,16 @@ h1 {
   min-height: 0;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
+  gap: 2rem;
+}
+
+.bottom-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding-top: 1rem;
+  flex-shrink: 0;
 }
 
 .flow-svg {

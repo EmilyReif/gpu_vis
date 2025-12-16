@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import './App.css'
 import { type GridData, type PassType, createDefaultGrid, calculateBlankCount } from './utils'
 
@@ -6,9 +6,10 @@ type FlowVisualizationProps = {
   gridData: GridData
   numGPUs: number
   numTimesteps: number
+  svgRef?: React.RefObject<SVGSVGElement>
 }
 
-function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizationProps) {
+function FlowVisualization({ gridData, numGPUs, numTimesteps, svgRef }: FlowVisualizationProps) {
   // Calculate memory usage for each GPU at each timestep
   const memoryUsage = useMemo(() => {
     const memory: number[][] = Array(numGPUs).fill(null).map(() => Array(numTimesteps).fill(0))
@@ -68,11 +69,12 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
   const cellWidth = 38 // Match grid-cell width exactly
   const rowSpacing = 30 // Match border-bottom spacing
   const headerHeight = 28 // Match header-cell height
+  const headerRowGap = 25 // Space between header and first GPU row (for memory chart)
   const rowLabelWidth = 60 // Match row-label width
   const startX = rowLabelWidth // Start right after the label, matching top grid
-  const svgWidth = Math.max(numTimesteps * cellWidth + rowLabelWidth + 100, 600)
+  const svgWidth = numTimesteps * cellWidth + rowLabelWidth
   const rowHeight = 32 // Match grid-cell height exactly
-  const svgHeight = headerHeight + numGPUs * (rowHeight + rowSpacing) - rowSpacing
+  const svgHeight = headerHeight + headerRowGap + numGPUs * (rowHeight + rowSpacing) - rowSpacing
 
   // Generate edges - connect nodes with same value in sequence
   const edges: Array<{
@@ -98,8 +100,8 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
       const from = sorted[i]
       const to = sorted[i + 1]
       
-      const rowY = headerHeight + from.gpuIdx * (rowHeight + rowSpacing) + rowHeight / 2
-      const nextRowY = headerHeight + to.gpuIdx * (rowHeight + rowSpacing) + rowHeight / 2
+      const rowY = headerHeight + headerRowGap + from.gpuIdx * (rowHeight + rowSpacing) + rowHeight / 2
+      const nextRowY = headerHeight + headerRowGap + to.gpuIdx * (rowHeight + rowSpacing) + rowHeight / 2
       
       edges.push({
         x1: startX + from.timeIdx * cellWidth + cellWidth / 2,
@@ -113,11 +115,12 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
   })
 
   // Ensure minimum dimensions for display
-  const calculatedHeight = headerHeight + numGPUs * (rowHeight + rowSpacing) - rowSpacing
+  const calculatedHeight = headerHeight + headerRowGap + numGPUs * (rowHeight + rowSpacing) - rowSpacing
   const minHeight = Math.max(svgHeight, calculatedHeight || 200)
 
   return (
     <svg 
+      ref={svgRef}
       className="flow-svg" 
       viewBox={`0 0 ${svgWidth} ${svgHeight}`}
       width={svgWidth}
@@ -125,7 +128,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
       preserveAspectRatio="xMinYMin meet"
     >
       {/* Background */}
-      <rect x="0" y="0" width={svgWidth} height={svgHeight} fill="rgba(255, 255, 255, 0.02)" />
+      <rect x="0" y="0" width={svgWidth} height={svgHeight} fill="#242424" />
       
       {/* Header background */}
       <rect 
@@ -133,7 +136,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
         y="0" 
         width={svgWidth} 
         height={headerHeight} 
-        fill="rgba(100, 108, 255, 0.2)" 
+        fill="rgba(100, 108, 255, 0.4)" 
       />
       <line
         x1="0"
@@ -144,14 +147,6 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
         strokeWidth="1"
       />
       
-      {/* Corner cell background */}
-      <rect
-        x="0"
-        y="0"
-        width={rowLabelWidth}
-        height={headerHeight}
-        fill="rgba(100, 108, 255, 0.2)"
-      />
       <line
         x1={rowLabelWidth}
         y1="0"
@@ -170,6 +165,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
             fill="#ffffff"
             fontSize="9.6"
             fontWeight="600"
+            fontFamily="sans-serif"
             textAnchor="middle"
           >
             t{timeIdx}
@@ -179,7 +175,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
       
       {/* GPU row backgrounds and grid lines */}
       {gridData.map((_, gpuIdx) => {
-        const rowY = headerHeight + gpuIdx * (rowHeight + rowSpacing)
+        const rowY = headerHeight + headerRowGap + gpuIdx * (rowHeight + rowSpacing)
         
         return (
           <g key={`row-${gpuIdx}`}>
@@ -245,6 +241,16 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
         >
           <polygon points="0 0, 10 3, 0 6" fill="#ff8800" />
         </marker>
+        <marker
+          id="arrowhead-memory"
+          markerWidth="5"
+          markerHeight="5"
+          refX="4.5"
+          refY="2.5"
+          orient="auto"
+        >
+          <polygon points="0 0, 5 2.5, 0 5" fill="rgba(255, 255, 255, 0.7)" />
+        </marker>
       </defs>
 
       {/* Draw edges first (so they appear behind nodes) */}
@@ -262,9 +268,37 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
         />
       ))}
 
+      {/* Memory label - positioned above first GPU label */}
+      <text
+        x={rowLabelWidth / 2}
+        y={headerHeight + headerRowGap / 2}
+        fill="#ffffff"
+        fontSize="9.6"
+        fontWeight="600"
+        fontFamily="sans-serif"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        opacity="0.8"
+      >
+        Memory
+      </text>
+      
+      {/* Arrow from Memory label to first memory area chart */}
+      {memoryUsage[0] && Math.max(...memoryUsage[0]) > 0 && (
+        <line
+          x1={rowLabelWidth / 2 + 20}
+          y1={headerHeight + headerRowGap / 2}
+          x2={startX + cellWidth / 2}
+          y2={headerHeight + headerRowGap - 12}
+          stroke="rgba(255, 255, 255, 0.5)"
+          strokeWidth="1.5"
+          markerEnd="url(#arrowhead-memory)"
+        />
+      )}
+
       {/* GPU row labels */}
       {gridData.map((_, gpuIdx) => {
-        const rowY = headerHeight + gpuIdx * (rowHeight + rowSpacing)
+        const rowY = headerHeight + headerRowGap + gpuIdx * (rowHeight + rowSpacing)
         const rowCenterY = rowY + rowHeight / 2
         
         return (
@@ -275,7 +309,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
               y={rowY}
               width={rowLabelWidth}
               height={rowHeight}
-              fill="rgba(100, 108, 255, 0.15)"
+              fill="rgba(100, 108, 255, 0.3)"
             />
             <line
               x1={rowLabelWidth}
@@ -292,6 +326,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
               fill="#ffffff"
               fontSize="12.8"
               fontWeight="600"
+              fontFamily="sans-serif"
               textAnchor="middle"
               dominantBaseline="middle"
             >
@@ -303,7 +338,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
 
       {/* Draw nodes */}
       {gridData.map((row, gpuIdx) => {
-        const rowY = headerHeight + gpuIdx * (rowHeight + rowSpacing)
+        const rowY = headerHeight + headerRowGap + gpuIdx * (rowHeight + rowSpacing)
         const rowCenterY = rowY + rowHeight / 2
         
         return (
@@ -335,6 +370,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
                     fill="#ffffff"
                     fontSize="12"
                     fontWeight="600"
+                    fontFamily="sans-serif"
                     textAnchor="middle"
                     dominantBaseline="middle"
                     style={{ fill: '#ffffff' }}
@@ -350,7 +386,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizatio
 
       {/* Memory area plots - rendered above each GPU row with curves */}
       {gridData.map((_, gpuIdx) => {
-        const rowY = headerHeight + gpuIdx * (rowHeight + rowSpacing)
+        const rowY = headerHeight + headerRowGap + gpuIdx * (rowHeight + rowSpacing)
         const maxMemory = Math.max(...memoryUsage[gpuIdx], 1)
         
         if (maxMemory === 0) return null
@@ -479,6 +515,35 @@ function App() {
     return calculateBlankCount(gridData)
   }, [gridData])
 
+  const svgRef = useRef<SVGSVGElement>(null)
+
+  const handleDownloadSVG = useCallback(() => {
+    if (!svgRef.current) return
+
+    const svgElement = svgRef.current.cloneNode(true) as SVGSVGElement
+    
+    // Ensure SVG has proper namespace and attributes
+    if (!svgElement.getAttribute('xmlns')) {
+      svgElement.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+    }
+    if (!svgElement.getAttribute('xmlns:xlink')) {
+      svgElement.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink')
+    }
+    
+    const svgData = new XMLSerializer().serializeToString(svgElement)
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+    const svgUrl = URL.createObjectURL(svgBlob)
+    
+    const downloadLink = document.createElement('a')
+    downloadLink.href = svgUrl
+    downloadLink.download = 'gpu-visualization.svg'
+    document.body.appendChild(downloadLink)
+    downloadLink.click()
+    document.body.removeChild(downloadLink)
+    
+    URL.revokeObjectURL(svgUrl)
+  }, [])
+
   return (
     <div className="App">
       <h1>GPU Pipelining Visualization</h1>
@@ -525,13 +590,6 @@ function App() {
             </div>
           </div>
 
-          <div className="output-controls">
-            <div className="control-group">
-              <label>Bubble count:</label>
-              <div className="blank-counter">{blankCount}</div>
-            </div>
-          </div>
-
           <div className="grid-container">
             <div className="grid-wrapper">
               <div className="grid-header">
@@ -562,7 +620,22 @@ function App() {
         </div>
         <div className="bottom-section">
           <div className="flow-container">
-            <FlowVisualization gridData={gridData} numGPUs={numGPUs} numTimesteps={numTimesteps} />
+            <FlowVisualization gridData={gridData} numGPUs={numGPUs} numTimesteps={numTimesteps} svgRef={svgRef} />
+            <div className="bottom-controls">
+              <div className="control-group">
+                <label>Bubble count:</label>
+                <div className="blank-counter">{blankCount}</div>
+              </div>
+              <div className="control-group">
+                <button 
+                  className="download-button"
+                  onClick={handleDownloadSVG}
+                  type="button"
+                >
+                  Download as SVG
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
