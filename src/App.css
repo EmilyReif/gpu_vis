@@ -302,6 +302,8 @@ h1 {
   overflow: auto;
   padding: 1rem;
   min-height: 0;
+  display: flex;
+  justify-content: center;
 }
 
 .flow-svg {
