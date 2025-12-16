@@ -1,24 +1,426 @@
 import { useState, useCallback, useMemo } from 'react'
 import './App.css'
+import { type GridData, type PassType, createDefaultGrid, calculateBlankCount } from './utils'
 
-type CellData = {
-  value: number | null
-  passType: PassType | null
+type FlowVisualizationProps = {
+  gridData: GridData
+  numGPUs: number
+  numTimesteps: number
 }
 
-type GridData = CellData[][]
+function FlowVisualization({ gridData, numGPUs, numTimesteps }: FlowVisualizationProps) {
+  // Calculate memory usage for each GPU at each timestep
+  const memoryUsage = useMemo(() => {
+    const memory: number[][] = Array(numGPUs).fill(null).map(() => Array(numTimesteps).fill(0))
+    
+    // For each GPU, track which batches are currently in memory
+    for (let gpuIdx = 0; gpuIdx < numGPUs; gpuIdx++) {
+      const batchesInMemory = new Set<number>()
+      
+      for (let timeIdx = 0; timeIdx < numTimesteps; timeIdx++) {
+        const cell = gridData[gpuIdx][timeIdx]
+        
+        // Process events at this timestep
+        if (cell.value !== null && cell.passType) {
+          if (cell.passType === 'forward') {
+            // Forward pass: add batch to memory
+            batchesInMemory.add(cell.value)
+          } else if (cell.passType === 'backward') {
+            // Backward pass: remove batch from memory
+            batchesInMemory.delete(cell.value)
+          }
+        }
+        
+        // Record current memory usage at this timestep (after processing events)
+        memory[gpuIdx][timeIdx] = batchesInMemory.size
+      }
+    }
+    
+    return memory
+  }, [gridData, numGPUs, numTimesteps])
 
-type PassType = 'forward' | 'backward'
+  // Collect all cells with their positions
+  const allCells: Array<{ value: number; timeIdx: number; gpuIdx: number; passType: PassType }> = []
+  
+  gridData.forEach((row, gpuIdx) => {
+    row.forEach((cell, timeIdx) => {
+      if (cell.value !== null && cell.passType) {
+        allCells.push({
+          value: cell.value,
+          timeIdx,
+          gpuIdx,
+          passType: cell.passType
+        })
+      }
+    })
+  })
+
+  // Group cells by value
+  const valueGroups: { [key: number]: Array<{ timeIdx: number; gpuIdx: number; passType: PassType }> } = {}
+  allCells.forEach(cell => {
+    if (!valueGroups[cell.value]) {
+      valueGroups[cell.value] = []
+    }
+    valueGroups[cell.value].push(cell)
+  })
+
+  // Calculate dimensions - matching top grid
+  const cellWidth = 38 // Match grid-cell width exactly
+  const rowSpacing = 30 // Match border-bottom spacing
+  const headerHeight = 28 // Match header-cell height
+  const rowLabelWidth = 60 // Match row-label width
+  const startX = rowLabelWidth // Start right after the label, matching top grid
+  const svgWidth = Math.max(numTimesteps * cellWidth + rowLabelWidth + 100, 600)
+  const rowHeight = 32 // Match grid-cell height exactly
+  const svgHeight = headerHeight + numGPUs * (rowHeight + rowSpacing) - rowSpacing
+
+  // Generate edges - connect nodes with same value in sequence
+  const edges: Array<{
+    x1: number
+    y1: number
+    x2: number
+    y2: number
+    passType: PassType
+    value: number
+  }> = []
+
+  Object.entries(valueGroups).forEach(([value, positions]) => {
+    if (positions.length < 2) return
+    
+    // Sort by timestep, then by GPU
+    const sorted = positions.sort((a, b) => {
+      if (a.timeIdx !== b.timeIdx) return a.timeIdx - b.timeIdx
+      return a.gpuIdx - b.gpuIdx
+    })
+    
+    // Connect consecutive nodes
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const from = sorted[i]
+      const to = sorted[i + 1]
+      
+      const rowY = headerHeight + from.gpuIdx * (rowHeight + rowSpacing) + rowHeight / 2
+      const nextRowY = headerHeight + to.gpuIdx * (rowHeight + rowSpacing) + rowHeight / 2
+      
+      edges.push({
+        x1: startX + from.timeIdx * cellWidth + cellWidth / 2,
+        y1: rowY,
+        x2: startX + to.timeIdx * cellWidth + cellWidth / 2,
+        y2: nextRowY,
+        passType: from.passType,
+        value: Number(value)
+      })
+    }
+  })
+
+  // Ensure minimum dimensions for display
+  const calculatedHeight = headerHeight + numGPUs * (rowHeight + rowSpacing) - rowSpacing
+  const minHeight = Math.max(svgHeight, calculatedHeight || 200)
+
+  return (
+    <svg 
+      className="flow-svg" 
+      viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+      width={svgWidth}
+      height={minHeight}
+      preserveAspectRatio="xMinYMin meet"
+    >
+      {/* Background */}
+      <rect x="0" y="0" width={svgWidth} height={svgHeight} fill="rgba(255, 255, 255, 0.02)" />
+      
+      {/* Header background */}
+      <rect 
+        x="0" 
+        y="0" 
+        width={svgWidth} 
+        height={headerHeight} 
+        fill="rgba(100, 108, 255, 0.2)" 
+      />
+      <line
+        x1="0"
+        y1={headerHeight}
+        x2={svgWidth}
+        y2={headerHeight}
+        stroke="#d3d3d3"
+        strokeWidth="1"
+      />
+      
+      {/* Corner cell background */}
+      <rect
+        x="0"
+        y="0"
+        width={rowLabelWidth}
+        height={headerHeight}
+        fill="rgba(100, 108, 255, 0.2)"
+      />
+      <line
+        x1={rowLabelWidth}
+        y1="0"
+        x2={rowLabelWidth}
+        y2={headerHeight}
+        stroke="#d3d3d3"
+        strokeWidth="1"
+      />
+      
+      {/* Timestep labels header */}
+      {Array(numTimesteps).fill(0).map((_, timeIdx) => (
+        <g key={`time-label-${timeIdx}`}>
+          <text
+            x={startX + timeIdx * cellWidth + cellWidth / 2}
+            y={headerHeight - 6}
+            fill="#ffffff"
+            fontSize="9.6"
+            fontWeight="600"
+            textAnchor="middle"
+          >
+            t{timeIdx}
+          </text>
+        </g>
+      ))}
+      
+      {/* GPU row backgrounds and grid lines */}
+      {gridData.map((_, gpuIdx) => {
+        const rowY = headerHeight + gpuIdx * (rowHeight + rowSpacing)
+        
+        return (
+          <g key={`row-${gpuIdx}`}>
+            {/* White row background - exactly 32px tall */}
+            <rect
+              x={rowLabelWidth}
+              y={rowY}
+              width={svgWidth - rowLabelWidth}
+              height={rowHeight}
+              fill="white"
+              stroke="#e0e0e0"
+              strokeWidth="2"
+            />
+            
+            {/* Vertical grid lines - align with cell boundaries */}
+            {Array(numTimesteps + 1).fill(0).map((_, timeIdx) => {
+              const lineX = startX + timeIdx * cellWidth
+              return (
+                <line
+                  key={`vline-${timeIdx}`}
+                  x1={lineX}
+                  y1={rowY}
+                  x2={lineX}
+                  y2={rowY + rowHeight}
+                  stroke="#d3d3d3"
+                  strokeWidth="1"
+                />
+              )
+            })}
+            
+            
+            {/* Bottom border */}
+            <line
+              x1={rowLabelWidth}
+              y1={rowY + rowHeight}
+              x2={svgWidth}
+              y2={rowY + rowHeight}
+              stroke="#d3d3d3"
+              strokeWidth="1"
+            />
+          </g>
+        )
+      })}
+      
+      <defs>
+        <marker
+          id="arrowhead-forward"
+          markerWidth="10"
+          markerHeight="10"
+          refX="9"
+          refY="3"
+          orient="auto"
+        >
+          <polygon points="0 0, 10 3, 0 6" fill="#646cff" />
+        </marker>
+        <marker
+          id="arrowhead-backward"
+          markerWidth="10"
+          markerHeight="10"
+          refX="9"
+          refY="3"
+          orient="auto"
+        >
+          <polygon points="0 0, 10 3, 0 6" fill="#ff8800" />
+        </marker>
+      </defs>
+
+      {/* Draw edges first (so they appear behind nodes) */}
+      {edges.map((edge, idx) => (
+        <line
+          key={`edge-${edge.value}-${idx}`}
+          x1={edge.x1}
+          y1={edge.y1}
+          x2={edge.x2}
+          y2={edge.y2}
+          stroke={edge.passType === 'backward' ? '#ff8800' : '#646cff'}
+          strokeWidth="2"
+          strokeOpacity="0.6"
+          markerEnd={edge.passType === 'backward' ? 'url(#arrowhead-backward)' : 'url(#arrowhead-forward)'}
+        />
+      ))}
+
+      {/* GPU row labels */}
+      {gridData.map((_, gpuIdx) => {
+        const rowY = headerHeight + gpuIdx * (rowHeight + rowSpacing)
+        const rowCenterY = rowY + rowHeight / 2
+        
+        return (
+          <g key={`gpu-label-${gpuIdx}`}>
+            {/* GPU label background */}
+            <rect
+              x="0"
+              y={rowY}
+              width={rowLabelWidth}
+              height={rowHeight}
+              fill="rgba(100, 108, 255, 0.15)"
+            />
+            <line
+              x1={rowLabelWidth}
+              y1={rowY}
+              x2={rowLabelWidth}
+              y2={rowY + rowHeight}
+              stroke="#d3d3d3"
+              strokeWidth="1"
+            />
+            {/* GPU label text */}
+            <text
+              x={rowLabelWidth / 2}
+              y={rowCenterY}
+              fill="#ffffff"
+              fontSize="12.8"
+              fontWeight="600"
+              textAnchor="middle"
+              dominantBaseline="middle"
+            >
+              GPU {gpuIdx}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* Draw nodes */}
+      {gridData.map((row, gpuIdx) => {
+        const rowY = headerHeight + gpuIdx * (rowHeight + rowSpacing)
+        const rowCenterY = rowY + rowHeight / 2
+        
+        return (
+          <g key={`gpu-${gpuIdx}`}>
+            
+            {/* Nodes for each filled cell */}
+            {row.map((cell, timeIdx) => {
+              if (cell.value === null) return null
+              
+              // Center the node in the cell (cell is 38px wide, node is 30px wide)
+              const x = startX + timeIdx * cellWidth + cellWidth / 2
+              const y = rowCenterY
+              const isBackward = cell.passType === 'backward'
+              
+              return (
+                <g key={`node-${gpuIdx}-${timeIdx}`}>
+                <rect
+                  x={x - cellWidth / 2}
+                  y={y - rowHeight / 2}
+                  width={cellWidth}
+                  height={rowHeight}
+                  fill={isBackward ? '#ff8800' : '#646cff'}
+                  stroke="white"
+                  strokeWidth="1"
+                />
+                  <text
+                    x={x}
+                    y={y}
+                    fill="#ffffff"
+                    fontSize="12"
+                    fontWeight="600"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    style={{ fill: '#ffffff' }}
+                  >
+                    {cell.value}
+                  </text>
+                </g>
+              )
+            })}
+          </g>
+        )
+      })}
+
+      {/* Memory area plots - rendered above each GPU row with curves */}
+      {gridData.map((_, gpuIdx) => {
+        const rowY = headerHeight + gpuIdx * (rowHeight + rowSpacing)
+        const maxMemory = Math.max(...memoryUsage[gpuIdx], 1)
+        
+        if (maxMemory === 0) return null
+        
+        // Position area plot above the row
+        // Use a fixed height for the area plot (20px) positioned just above the row
+        const areaHeight = 20
+        const areaBottom = rowY - 2 // Bottom of area plot (2px above row)
+        
+        // Build path for area chart with smooth curves
+        const pathSegments: string[] = []
+        
+        // Start at bottom-left
+        const firstMemory = memoryUsage[gpuIdx][0]
+        const firstMemoryY = areaBottom - (firstMemory / maxMemory) * areaHeight
+        pathSegments.push(`M ${startX} ${areaBottom}`)
+        pathSegments.push(`L ${startX} ${firstMemoryY}`)
+        
+        // For each timestep, draw with smooth curves at cell boundaries
+        for (let timeIdx = 0; timeIdx < numTimesteps; timeIdx++) {
+          const memory = memoryUsage[gpuIdx][timeIdx]
+          const cellEndX = startX + (timeIdx + 1) * cellWidth
+          const memoryY = areaBottom - (memory / maxMemory) * areaHeight
+          
+          if (timeIdx < numTimesteps - 1) {
+            const nextMemory = memoryUsage[gpuIdx][timeIdx + 1]
+            const nextMemoryY = areaBottom - (nextMemory / maxMemory) * areaHeight
+            
+            // Draw horizontal line most of the way across the cell
+            const curveStartX = cellEndX - cellWidth * 0.15 // Start curve 15% before cell end
+            pathSegments.push(`L ${curveStartX} ${memoryY}`)
+            
+            // Use cubic bezier for smooth S-curve transition
+            // Control points create a smooth transition
+            const control1X = cellEndX - cellWidth * 0.05
+            const control1Y = memoryY
+            const control2X = cellEndX + cellWidth * 0.05
+            const control2Y = nextMemoryY
+            
+            pathSegments.push(`C ${control1X} ${control1Y} ${control2X} ${control2Y} ${cellEndX + cellWidth * 0.15} ${nextMemoryY}`)
+          } else {
+            // Last cell - draw to end
+            pathSegments.push(`L ${cellEndX} ${memoryY}`)
+          }
+        }
+        
+        // Close the path by going to bottom-right
+        pathSegments.push(`L ${startX + numTimesteps * cellWidth} ${areaBottom}`)
+        pathSegments.push('Z')
+        
+        return (
+          <path
+            key={`memory-area-${gpuIdx}`}
+            d={pathSegments.join(' ')}
+            fill="rgba(128, 128, 128, 0.3)"
+            stroke="rgba(128, 128, 128, 0.5)"
+            strokeWidth="1"
+          />
+        )
+      })}
+    </svg>
+  )
+}
 
 function App() {
   const [numGPUs, setNumGPUs] = useState(4)
   const [numTimesteps, setNumTimesteps] = useState(10)
   const [passType, setPassType] = useState<PassType>('forward')
   const [gridData, setGridData] = useState<GridData>(() => 
-    Array(numGPUs).fill(null).map(() => Array(numTimesteps).fill(null).map(() => ({
-      value: null,
-      passType: null
-    })))
+    createDefaultGrid(4, 10)
   )
 
   const handleGridSizeChange = useCallback((newGPUs: number, newTimesteps: number) => {
@@ -33,7 +435,7 @@ function App() {
           }
         )
       } else {
-        // New row
+        // New row - create empty cells
         return Array(newTimesteps).fill(null).map(() => ({
           value: null,
           passType: null
@@ -74,9 +476,7 @@ function App() {
   }
 
   const blankCount = useMemo(() => {
-    return gridData.reduce((count, row) => 
-      count + row.filter(cell => cell.value === null).length, 0
-    )
+    return calculateBlankCount(gridData)
   }, [gridData])
 
   return (
@@ -161,7 +561,9 @@ function App() {
           </div>
         </div>
         <div className="bottom-section">
-          {/* Fancier visualization will go here */}
+          <div className="flow-container">
+            <FlowVisualization gridData={gridData} numGPUs={numGPUs} numTimesteps={numTimesteps} />
+          </div>
         </div>
       </div>
     </div>
