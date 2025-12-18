@@ -82,8 +82,8 @@ h1 {
 }
 
 .control-group input[type="number"]:focus {
-  outline: 2px solid #646cff;
-  border-color: #646cff;
+  outline: 2px solid #888;
+  border-color: #888;
 }
 
 .toggle-switch-container {
@@ -119,15 +119,15 @@ h1 {
 }
 
 .toggle-switch.forward {
-  background-color: rgba(100, 108, 255, 0.5);
+  background-color: rgba(255, 136, 0, 0.6);
 }
 
 .toggle-switch.backward {
-  background-color: rgba(255, 136, 0, 0.5);
+  background-color: rgba(100, 108, 255, 0.6);
 }
 
 .toggle-switch:focus {
-  outline: 2px solid #646cff;
+  outline: 2px solid #888;
   outline-offset: 2px;
 }
 
@@ -152,7 +152,7 @@ h1 {
   padding: 0.4em;
   border-radius: 4px;
   border: none;
-  background-color: rgba(100, 108, 255, 0.3);
+  background-color: rgba(255, 255, 255, 0.1);
   color: white;
   font-size: 0.9em;
   text-align: center;
@@ -165,7 +165,7 @@ h1 {
   padding: 0.5em 1em;
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  background-color: rgba(100, 108, 255, 0.5);
+  background-color: rgba(255, 255, 255, 0.1);
   color: white;
   font-size: 0.9em;
   font-weight: 600;
@@ -175,16 +175,16 @@ h1 {
 }
 
 .download-button:hover {
-  background-color: rgba(100, 108, 255, 0.7);
+  background-color: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.4);
 }
 
 .download-button:active {
-  background-color: rgba(100, 108, 255, 0.9);
+  background-color: rgba(255, 255, 255, 0.3);
 }
 
 .download-button:focus {
-  outline: 2px solid #646cff;
+  outline: 2px solid #888;
   outline-offset: 2px;
 }
 
@@ -207,7 +207,7 @@ h1 {
 
 .grid-header {
   display: flex;
-  background-color: rgba(100, 108, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.1);
   border-bottom: 1px solid #d3d3d3;
 }
 
@@ -261,7 +261,7 @@ h1 {
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  background-color: rgba(100, 108, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.08);
   border-right: 1px solid #d3d3d3;
   font-size: 0.8em;
 }
@@ -281,14 +281,7 @@ h1 {
 
 .grid-cell.filled {
   color: white;
-}
-
-.grid-cell.filled.pass-forward {
-  background-color: #646cff;
-}
-
-.grid-cell.filled.pass-backward {
-  background-color: #ff8800;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .grid-cell.empty {
@@ -297,18 +290,14 @@ h1 {
 }
 
 .grid-cell:focus {
-  outline: 2px solid #646cff;
+  outline: 2px solid #888;
   outline-offset: -1px;
   z-index: 1;
   position: relative;
 }
 
-.grid-cell.filled.pass-forward:hover {
-  background-color: #7b82ff;
-}
-
-.grid-cell.filled.pass-backward:hover {
-  background-color: #ff9933;
+.grid-cell.filled:hover {
+  filter: brightness(1.1);
 }
 
 .grid-cell.empty:hover {

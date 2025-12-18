@@ -84,3 +84,20 @@ export function calculateBlankCount(gridData: GridData): number {
   )
 }
 
+/**
+ * Generates a color based on batch number and pass type
+ */
+export function getColorForBatch(batchNumber: number, passType: PassType | null): string {
+  if (batchNumber === null) return 'transparent';
+  
+  // Create a rainbow-ordered hue starting from Green (120)
+  // Using a 50-degree step to hit Green (120), Blue (approx 220), Indigo (270), Violet (320)
+  const hue = (120 + ((batchNumber - 1) * 50)) % 360;
+  
+  // Forward pass is darker, backward pass is lighter
+  const saturation = 70;
+  const lightness = passType === 'forward' ? 40 : 60;
+  
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+

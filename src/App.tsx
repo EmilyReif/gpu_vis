@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from 'react'
 import './App.css'
-import { type GridData, type PassType, createDefaultGrid, calculateBlankCount } from './utils'
+import { type GridData, type PassType, createDefaultGrid, calculateBlankCount, getColorForBatch } from './utils'
 
 type FlowVisualizationProps = {
   gridData: GridData
@@ -64,6 +64,13 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps, svgRef }: FlowVisu
     }
     valueGroups[cell.value].push(cell)
   })
+
+  // Get all unique batch values to create markers for each
+  const uniqueBatches = useMemo(() => {
+    const batches = new Set<number>()
+    allCells.forEach(cell => batches.add(cell.value))
+    return Array.from(batches)
+  }, [allCells])
 
   // Calculate dimensions - matching top grid
   const cellWidth = 38 // Match grid-cell width exactly
@@ -136,7 +143,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps, svgRef }: FlowVisu
         y="0" 
         width={svgWidth} 
         height={headerHeight} 
-        fill="rgba(100, 108, 255, 0.4)" 
+        fill="rgba(255, 255, 255, 0.15)" 
       />
       <line
         x1="0"
@@ -221,26 +228,30 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps, svgRef }: FlowVisu
       })}
       
       <defs>
-        <marker
-          id="arrowhead-forward"
-          markerWidth="10"
-          markerHeight="10"
-          refX="9"
-          refY="3"
-          orient="auto"
-        >
-          <polygon points="0 0, 10 3, 0 6" fill="#646cff" />
-        </marker>
-        <marker
-          id="arrowhead-backward"
-          markerWidth="10"
-          markerHeight="10"
-          refX="9"
-          refY="3"
-          orient="auto"
-        >
-          <polygon points="0 0, 10 3, 0 6" fill="#ff8800" />
-        </marker>
+        {uniqueBatches.map(batch => (
+          <g key={`markers-batch-${batch}`}>
+            <marker
+              id={`arrowhead-forward-${batch}`}
+              markerWidth="10"
+              markerHeight="10"
+              refX="9"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3, 0 6" fill={getColorForBatch(batch, 'forward')} />
+            </marker>
+            <marker
+              id={`arrowhead-backward-${batch}`}
+              markerWidth="10"
+              markerHeight="10"
+              refX="9"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3, 0 6" fill={getColorForBatch(batch, 'backward')} />
+            </marker>
+          </g>
+        ))}
         <marker
           id="arrowhead-memory"
           markerWidth="5"
@@ -261,10 +272,10 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps, svgRef }: FlowVisu
           y1={edge.y1}
           x2={edge.x2}
           y2={edge.y2}
-          stroke={edge.passType === 'backward' ? '#ff8800' : '#646cff'}
+          stroke={getColorForBatch(edge.value, edge.passType)}
           strokeWidth="2"
           strokeOpacity="0.6"
-          markerEnd={edge.passType === 'backward' ? 'url(#arrowhead-backward)' : 'url(#arrowhead-forward)'}
+          markerEnd={`url(#arrowhead-${edge.passType}-${edge.value})`}
         />
       ))}
 
@@ -309,7 +320,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps, svgRef }: FlowVisu
               y={rowY}
               width={rowLabelWidth}
               height={rowHeight}
-              fill="rgba(100, 108, 255, 0.3)"
+              fill="rgba(255, 255, 255, 0.1)"
             />
             <line
               x1={rowLabelWidth}
@@ -351,7 +362,6 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps, svgRef }: FlowVisu
               // Center the node in the cell (cell is 38px wide, node is 30px wide)
               const x = startX + timeIdx * cellWidth + cellWidth / 2
               const y = rowCenterY
-              const isBackward = cell.passType === 'backward'
               
               return (
                 <g key={`node-${gpuIdx}-${timeIdx}`}>
@@ -360,7 +370,7 @@ function FlowVisualization({ gridData, numGPUs, numTimesteps, svgRef }: FlowVisu
                   y={y - rowHeight / 2}
                   width={cellWidth}
                   height={rowHeight}
-                  fill={isBackward ? '#ff8800' : '#646cff'}
+                  fill={getColorForBatch(cell.value, cell.passType)}
                   stroke="white"
                   strokeWidth="1"
                 />
@@ -608,6 +618,12 @@ function App() {
                         type="text"
                         className={`grid-cell ${cell.value !== null ? 'filled' : 'empty'} ${cell.passType ? `pass-${cell.passType}` : ''}`}
                         value={cell.value === null ? '' : cell.value}
+                        style={{ 
+                          backgroundColor: cell.value !== null 
+                            ? (cell.passType === 'forward' ? '#ff8800' : '#646cff') 
+                            : undefined,
+                          borderColor: cell.value !== null ? 'rgba(255,255,255,0.2)' : undefined
+                        }}
                         onChange={(e) => handleCellChange(gpuIdx, timeIdx, e.target.value)}
                         placeholder="-"
                       />
