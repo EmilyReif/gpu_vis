@@ -59,8 +59,8 @@ export function createDefaultGrid(numGPUs: number, numTimesteps: number): GridDa
   }
 
   // Backward pass diagonal going back up: following the backward 1s (value 2)
-  // Going all the way to the bottom (GPU 0) next to the 1s
-  const backward2StartTime = numGPUs
+  // Moving this to after the first backward pass to avoid collisions
+  const backward2StartTime = numGPUs + 2
   for (let i = 0; i < Math.min(numGPUs, numTimesteps - backward2StartTime); i++) {
     const gpuIdx = numGPUs - 1 - i
     const timeIdx = backward2StartTime + i
